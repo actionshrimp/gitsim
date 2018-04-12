@@ -9,6 +9,7 @@ npm run build
 
 ```
 npm run watch
+parcel assets/index.html
 ```
 
 
