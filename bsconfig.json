@@ -10,9 +10,7 @@
     "in-source": true
   },
   "suffix": ".bs.js",
-  "bs-dependencies": [
-      // add your bs-dependencies here 
-  ],
+  "bs-dependencies": ["Reprocessing"],
   "warnings": {
     "error" : "+101"
   },
