@@ -7,6 +7,7 @@ type commit =
   { commit_sha : string
   ; commit_parent : string option
   ; commit_p : vec
+  ; commit_v : vec
   }
 
 type gref =
@@ -21,26 +22,29 @@ type repo =
   ; repo_refs : gref list
   ; repo_commits : commit StringMap.t
   ; repo_p : vec
+  ; repo_thrust : vec
   }
 
 type stateT = {
   repos: repo list
 }
 
+let zero_vec = { x = 0.; y = 0. }
 
-let origin =
+let origin : repo =
   let init_p = { x = 10.; y = 10. } in
   { repo_name = "local"
   ; repo_refs = [{ gref_name = "master"; gref_sha = "abc" }]
   ; repo_commits =
       (List.fold_left (fun m c -> StringMap.add c.commit_sha c m)
          StringMap.empty
-         [ { commit_sha = "abc"; commit_parent = (Some "def"); commit_p = init_p }
-         ; { commit_sha = "def"; commit_parent = (Some "ghi"); commit_p = init_p }
-         ; { commit_sha = "ghi"; commit_parent = None; commit_p = init_p }
+         [ { commit_sha = "abc"; commit_parent = (Some "def"); commit_p = init_p; commit_v = zero_vec }
+         ; { commit_sha = "def"; commit_parent = (Some "ghi"); commit_p = init_p; commit_v = zero_vec }
+         ; { commit_sha = "ghi"; commit_parent = None; commit_p = init_p; commit_v = zero_vec }
          ]
       )
   ; repo_p = init_p
+  ; repo_thrust = { x = 10.; y = 1000. }
   }
 
 let initState =
@@ -51,59 +55,86 @@ let setup env : stateT =
   Env.size ~width:600 ~height:600 env;
   initState
 
-let v_max = 50.
-let v_max_sq = 50. ** 2.
+let v_min = 10.
+let v_min_sq = v_min ** 2.
 
-let r_sq_relation ?inverse:(inverse=false) ?scale:(scale=1.) (p : vec) (p2 : vec) =
-  let d_orig = { x = p2.x -. p.x; y = p2.y -. p.y } in
-  let d = { x = if d_orig.x = 0. && d_orig.y = 0. then Js.Math.random () +. 0.1 else d_orig.x
-          ; y = if d_orig.x = 0. && d_orig.y = 0. then Js.Math.random () +. 0.1 else d_orig.y
-          }
-  in
-  let r_sq = (d.x ** 2. +. d.y ** 2.) in
-  let r = sqrt r_sq in
-  let d_unit = { x = d.x /. r; y = d.y /. r } in
-  let a_mag = if inverse then 1. /. r_sq else r_sq in
-  { x = d_unit.x *. a_mag *. scale; y = d_unit.y *. a_mag *. scale }
+let v_max = 500.
+let v_max_sq = v_max ** 2.
 
-let step_commit (dt : float) (repo : repo) (repeller_ps : vec list) commit =
+let target_d = 150.
+let target_d_sq = target_d ** 2.
+
+let calc_mag_sq (p : vec) =
+  p.x ** 2. +. p.y ** 2.
+
+let add_vecs (p : vec) (p2 : vec) =
+  { x = p.x +. p2.x; y = p.y +. p2.y }
+
+let sub_vecs (p : vec) (p2 : vec) =
+  { x = p.x -. p2.x; y = p.y -. p2.y }
+
+let scale_vec (c : float) (p : vec) =
+  { x = c *. p.x; y = c *. p.y }
+
+let rand_direction () : vec =
+  let phi = 2. *. 3.14 *. (Js.Math.random ()) in
+  { x = Js.Math.cos phi; y = Js.Math.sin phi }
+
+let rec gather_parent_ps ?acc:(acc=[]) (repo : repo) (commit : commit) : vec list =
+  match commit.commit_parent with
+  | None -> List.rev (repo.repo_p :: acc)
+  | Some sha ->
+    let c = StringMap.find sha repo.repo_commits in
+    gather_parent_ps ~acc:(c.commit_p :: acc) repo c
+
+let step_commit (dt : float) (repo : repo) commit =
+  let parent_ps = gather_parent_ps repo commit in
   let p = commit.commit_p in
-  let attractor_p = match commit.commit_parent with
-    | None -> repo.repo_p
-    | Some sha ->
-      let c = StringMap.find sha repo.repo_commits
-      in c.commit_p
+  let repel_a = parent_ps |> List.fold_left (fun acc pp ->
+        let a =
+          if pp = p then
+            scale_vec 1000. (rand_direction ())
+          else
+            let delta = sub_vecs p pp in
+            let r_sq = calc_mag_sq delta in
+            let r = sqrt r_sq in
+            scale_vec (1000. /. r) delta
+        in
+        add_vecs acc a
+    ) zero_vec
   in
-  let attract_a = r_sq_relation p attractor_p in
-  (* print_endline (Printf.sprintf "attract_ax: %f, attract_ay: %f" attract_a.x attract_a.y); *)
-  let repel_a =
-    repeller_ps
-    |> List.fold_left (fun a_total p2 ->
-        let a = r_sq_relation ~inverse:true ~scale:50000. p p2 in
-        { x = a.x +. a_total.x; y = a.y +. a_total.y }
-      ) { x = 0.; y = 0. }
+  let drag_a =
+    let r_sq = calc_mag_sq commit.commit_v in
+    let r = sqrt r_sq in
+    scale_vec (-. (r *. 0.04)) commit.commit_v
   in
-  (* print_endline (Printf.sprintf "repel_ax: %f, repel_ay: %f" repel_a.x repel_a.y); *)
-  let a = { x = attract_a.x +. repel_a.x; y = attract_a.y +. repel_a.y } in
-  (* print_endline (Printf.sprintf "ax: %f, ay: %f" a.x a.y); *)
-  let v_orig = { x = a.x *. dt; y = a.y *. dt } in
-  let v_mag_sq = v_orig.x ** 2. +. v_orig.y ** 2. in
-  let v = if v_mag_sq > v_max_sq then
-      let v_mag = sqrt v_mag_sq in
-      { x = v_orig.x *. v_max /. v_mag; y = v_orig.y *. v_max /. v_mag }
+  let attract_a =
+    let direct_parent = List.hd parent_ps in
+    let delta = sub_vecs direct_parent p in
+    let r_sq = calc_mag_sq delta in
+    let r = sqrt r_sq in
+    let unit_vec = scale_vec (1. /. r) delta in
+    if r <= target_d then
+      zero_vec
     else
-      v_orig
+      scale_vec ((target_d -. r) ** 2.) unit_vec
   in
-  (* print_endline (Printf.sprintf "vx: %f, vy: %f" v.x v.y); *)
-  let p = { x = p.x +. v.x *. dt; y = p.y +. v.y *. dt } in
-  (* print_endline (Printf.sprintf "x: %f, y: %f" p.x p.y); *)
-  { commit with commit_p = p }
+  let a = zero_vec
+          |> add_vecs repel_a
+          |> add_vecs repo.repo_thrust
+          |> add_vecs drag_a
+          |> add_vecs attract_a
+  in
+  let v =
+    { x = commit.commit_v.x +. a.x *. dt; y = commit.commit_v.y +. a.y *. dt }
+  in
+  let p =
+    { x = p.x +. v.x *. dt; y = p.y +. v.y *. dt }
+  in
+  { commit with commit_p = p; commit_v = v }
 
 let step_repo (dt : float) repo =
-  let repeller_ps =
-    [repo.repo_p] @ StringMap.fold (fun _ c acc -> c.commit_p :: acc) repo.repo_commits []
-  in
-  { repo with repo_commits = StringMap.map (step_commit dt repo repeller_ps) repo.repo_commits }
+  { repo with repo_commits = StringMap.map (step_commit dt repo) repo.repo_commits }
 
 let step_state (dt : float) (state : stateT) =
   { repos = List.map (step_repo dt) state.repos }
@@ -123,7 +154,8 @@ let draw_repo env repo =
 
 let draw state env =
   let dt = Env.deltaTime env in
-  let state' = step_state dt state in
+  let dt_sim = min dt 0.1 in
+  let state' = step_state dt_sim state in
   Draw.background (Utils.color ~r:199 ~g:217 ~b:229 ~a:255) env;
   List.iter (draw_repo env) state'.repos;
   state'
