@@ -74,6 +74,13 @@ let rand_direction () : vec =
   let phi = 2. *. 3.14 *. (Js.Math.random ()) in
   { x = Js.Math.cos phi; y = Js.Math.sin phi }
 
+let one_parent_p (repo : repo) (commit : commit) : vec =
+  match commit.commit_parent with
+  | None -> repo.repo_p
+  | Some sha ->
+    let c = StringMap.find sha repo.repo_commits in
+    c.commit_p
+
 let rec gather_parent_ps ?acc:(acc=[]) (repo : repo) (commit : commit) : vec list =
   match commit.commit_parent with
   | None -> List.rev (repo.repo_p :: acc)
@@ -133,7 +140,10 @@ let step_repo (dt : float) repo =
 let step_state (dt : float) (state : stateT) =
   { repos = List.map (step_repo dt) state.repos }
 
-let draw_commit env commit =
+let draw_commit env repo commit =
+  let p = commit.commit_p in
+  let parent_p = one_parent_p repo commit in
+  Draw.linef ~p1:(parent_p.x,parent_p.y) ~p2:(p.x,p.y) env;
   Draw.fill (Utils.color ~r:241 ~g:78 ~b:50 ~a:255) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
@@ -145,7 +155,7 @@ let draw_repo env repo =
   Draw.strokeWeight 3 env;
   Draw.rectMode Center env;
   Draw.rectf ~pos:(repo.repo_p.x, repo.repo_p.y) ~width:100. ~height:50. env;
-  StringMap.iter (fun _ c -> draw_commit env c) repo.repo_commits
+  StringMap.iter (fun _ c -> draw_commit env repo c) repo.repo_commits
 
 let draw state env =
   let dt = Env.deltaTime env in
