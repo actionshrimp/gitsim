@@ -32,7 +32,7 @@ type stateT = {
 let zero_vec = { x = 0.; y = 0. }
 
 let origin : repo =
-  let init_p = { x = 10.; y = 10. } in
+  let init_p = { x = 100.; y = 50. } in
   { repo_name = "local"
   ; repo_refs = [{ gref_name = "master"; gref_sha = "abc" }]
   ; repo_commits =
@@ -44,7 +44,7 @@ let origin : repo =
          ]
       )
   ; repo_p = init_p
-  ; repo_thrust = { x = 10.; y = 1000. }
+  ; repo_thrust = { x = 0.; y = 500. }
   }
 
 let initState =
@@ -55,13 +55,7 @@ let setup env : stateT =
   Env.size ~width:600 ~height:600 env;
   initState
 
-let v_min = 10.
-let v_min_sq = v_min ** 2.
-
-let v_max = 500.
-let v_max_sq = v_max ** 2.
-
-let target_d = 150.
+let target_d = 80.
 let target_d_sq = target_d ** 2.
 
 let calc_mag_sq (p : vec) =
@@ -106,7 +100,7 @@ let step_commit (dt : float) (repo : repo) commit =
   let drag_a =
     let r_sq = calc_mag_sq commit.commit_v in
     let r = sqrt r_sq in
-    scale_vec (-. (r *. 0.04)) commit.commit_v
+    scale_vec (-. (min 5. (r *. 0.2))) commit.commit_v
   in
   let attract_a =
     let direct_parent = List.hd parent_ps in
@@ -149,6 +143,7 @@ let draw_repo env repo =
   Draw.fill Constants.white env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
+  Draw.rectMode Center env;
   Draw.rectf ~pos:(repo.repo_p.x, repo.repo_p.y) ~width:100. ~height:50. env;
   StringMap.iter (fun _ c -> draw_commit env c) repo.repo_commits
 
