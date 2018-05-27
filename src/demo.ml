@@ -32,19 +32,25 @@ type stateT = {
 let zero_vec = { x = 0.; y = 0. }
 
 let origin : repo =
-  let init_p = { x = 100.; y = 50. } in
+  let rand_init_p () = { x = (Js.Math.random ()) *. 200.; y = (Js.Math.random ()) *. 100. } in
   { repo_name = "local"
   ; repo_refs = [{ gref_name = "master"; gref_sha = "abc" }]
   ; repo_commits =
       (List.fold_left (fun m c -> StringMap.add c.commit_sha c m)
          StringMap.empty
-         [ { commit_sha = "abc"; commit_parent = (Some "def"); commit_p = init_p; commit_v = zero_vec }
-         ; { commit_sha = "def"; commit_parent = (Some "ghi"); commit_p = init_p; commit_v = zero_vec }
-         ; { commit_sha = "ghi"; commit_parent = None; commit_p = init_p; commit_v = zero_vec }
+         [ { commit_sha = "abc"; commit_parent = (Some "def"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "def"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "ghi"; commit_parent = None; commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "hjk"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "mno"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "pqr"; commit_parent = (Some "mno"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "stu"; commit_parent = (Some "hjk"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "vwx"; commit_parent = (Some "hjk"); commit_p = rand_init_p (); commit_v = zero_vec }
+         ; { commit_sha = "yz"; commit_parent = (Some "vwx"); commit_p = rand_init_p (); commit_v = zero_vec }
          ]
       )
-  ; repo_p = init_p
-  ; repo_thrust = { x = 0.; y = 500. }
+  ; repo_p = { x = 150.; y = 50. }
+  ; repo_thrust = { x = 0.; y = 100. }
   }
 
 let initState =
@@ -55,7 +61,7 @@ let setup env : stateT =
   Env.size ~width:600 ~height:600 env;
   initState
 
-let target_d = 80.
+let target_d = 10.
 let target_d_sq = target_d ** 2.
 
 let calc_mag_sq (p : vec) =
@@ -90,8 +96,12 @@ let rec gather_parent_ps ?acc:(acc=[]) (repo : repo) (commit : commit) : vec lis
 
 let step_commit (dt : float) (repo : repo) commit =
   let parent_ps = gather_parent_ps repo commit in
+  let sibling_ps = repo.repo_commits |> StringMap.filter (fun _ c ->
+      c.commit_parent = commit.commit_parent && c <> commit
+    )
+  in
   let p = commit.commit_p in
-  let repel_a = parent_ps |> List.fold_left (fun acc pp ->
+  let parent_repel_a = parent_ps |> List.fold_left (fun acc pp ->
         let a =
           if pp = p then
             scale_vec 1000. (rand_direction ())
@@ -99,10 +109,24 @@ let step_commit (dt : float) (repo : repo) commit =
             let delta = sub_vecs p pp in
             let r_sq = calc_mag_sq delta in
             let r = sqrt r_sq in
-            scale_vec (1000. /. r) delta
+            scale_vec (800. /. r) delta
         in
         add_vecs acc a
     ) zero_vec
+  in
+  let sibling_repel_a = StringMap.fold (fun _ commit acc ->
+      let pp = commit.commit_p in
+      let a =
+        if pp = p then
+          scale_vec 1000. (rand_direction ())
+        else
+          let delta = sub_vecs p pp in
+          let r_sq = calc_mag_sq delta in
+          let r = sqrt r_sq in
+          scale_vec (500. /. r) delta
+      in
+      add_vecs acc a
+    ) sibling_ps zero_vec
   in
   let drag_a =
     let r_sq = calc_mag_sq commit.commit_v in
@@ -110,7 +134,7 @@ let step_commit (dt : float) (repo : repo) commit =
     scale_vec (-. (min 5. (r *. 0.2))) commit.commit_v
   in
   let attract_a =
-    let direct_parent = List.hd parent_ps in
+    let direct_parent = one_parent_p repo commit in
     let delta = sub_vecs direct_parent p in
     let r_sq = calc_mag_sq delta in
     let r = sqrt r_sq in
@@ -121,10 +145,11 @@ let step_commit (dt : float) (repo : repo) commit =
       scale_vec ((target_d -. r) ** 2.) unit_vec
   in
   let a = zero_vec
-          |> add_vecs repel_a
           |> add_vecs repo.repo_thrust
-          |> add_vecs drag_a
+          |> add_vecs parent_repel_a
+          |> add_vecs sibling_repel_a
           |> add_vecs attract_a
+          |> add_vecs drag_a
   in
   let v =
     { x = commit.commit_v.x +. a.x *. dt; y = commit.commit_v.y +. a.y *. dt }
@@ -140,14 +165,17 @@ let step_repo (dt : float) repo =
 let step_state (dt : float) (state : stateT) =
   { repos = List.map (step_repo dt) state.repos }
 
-let draw_commit env repo commit =
+let draw_commit_lines env repo commit =
   let p = commit.commit_p in
   let parent_p = one_parent_p repo commit in
-  Draw.linef ~p1:(parent_p.x,parent_p.y) ~p2:(p.x,p.y) env;
+  Draw.linef ~p1:(parent_p.x,parent_p.y) ~p2:(p.x,p.y) env
+
+let draw_commit env commit =
+  let p = commit.commit_p in
   Draw.fill (Utils.color ~r:241 ~g:78 ~b:50 ~a:255) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
-  Draw.ellipsef ~center:(commit.commit_p.x, commit.commit_p.y) ~radx:30. ~rady:30. env
+  Draw.ellipsef ~center:(commit.commit_p.x, commit.commit_p.y) ~radx:20. ~rady:20. env
 
 let draw_repo env repo =
   Draw.fill Constants.white env;
@@ -155,7 +183,8 @@ let draw_repo env repo =
   Draw.strokeWeight 3 env;
   Draw.rectMode Center env;
   Draw.rectf ~pos:(repo.repo_p.x, repo.repo_p.y) ~width:100. ~height:50. env;
-  StringMap.iter (fun _ c -> draw_commit env repo c) repo.repo_commits
+  StringMap.iter (fun _ c -> draw_commit_lines env repo c) repo.repo_commits;
+  StringMap.iter (fun _ c -> draw_commit env c) repo.repo_commits
 
 let draw state env =
   let dt = Env.deltaTime env in
