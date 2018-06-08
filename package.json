@@ -1,19 +1,25 @@
 {
-  "name": "gitsim",
-  "version": "0.1.0",
-  "scripts": {
-    "clean": "bsb -clean-world",
-    "build": "bsb -make-world",
-    "watch": "bsb -make-world -w"
-  },
-  "keywords": [
-    "BuckleScript"
-  ],
-  "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "Reprocessing": "github:schmavery/reprocessing",
-    "bs-platform": "github:bsansouci/bsb-native#2.1.1",
-    "parcel-bundler": "^1.7.0"
-  }
+    "name": "gitsim",
+    "version": "0.1.0",
+    "scripts": {
+        "clean": "bsb -clean-world",
+        "build": "bsb -make-world",
+        "watch": "bsb -make-world -w",
+        "bundle": "parcel assets/index.html",
+        "deploy": "bsb -make-world && parcel build assets/index.html && gh-pages -d dist"
+    },
+    "keywords": [
+        "BuckleScript"
+    ],
+    "author": "",
+    "license": "MIT",
+    "devDependencies": {
+        "Reprocessing": "github:schmavery/reprocessing",
+        "bs-platform": "github:bsansouci/bsb-native#2.1.1",
+        "less": "^3.0.4",
+        "parcel-bundler": "^1.7.0"
+    },
+    "dependencies": {
+        "gh-pages": "^1.1.0"
+    }
 }

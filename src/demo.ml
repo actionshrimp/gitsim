@@ -22,44 +22,45 @@ type repo =
   ; repo_refs : gref list
   ; repo_commits : commit StringMap.t
   ; repo_p : vec
-  ; repo_thrust : vec
   }
 
-type stateT = {
-  repos: repo list
-}
+type stateT =
+  { repos: repo list
+  ; t : float
+  }
 
 let zero_vec = { x = 0.; y = 0. }
 
-let origin : repo =
-  let rand_init_p () = { x = (Js.Math.random ()) *. 200.; y = (Js.Math.random ()) *. 100. } in
-  { repo_name = "local"
+let global_forces (t : float) = { x = 100. *. Js.Math.sin (t /. 2.) +. 20. *. Js.Math.cos (t /. 3.); y = -. 1000. }
+
+let origin_init : repo =
+  let repo_init_p = { x = 150.; y = 550. } in
+  { repo_name = "origin"
   ; repo_refs = [{ gref_name = "master"; gref_sha = "abc" }]
   ; repo_commits =
       (List.fold_left (fun m c -> StringMap.add c.commit_sha c m)
          StringMap.empty
-         [ { commit_sha = "abc"; commit_parent = (Some "def"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "def"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "ghi"; commit_parent = None; commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "hjk"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "mno"; commit_parent = (Some "ghi"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "pqr"; commit_parent = (Some "mno"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "stu"; commit_parent = (Some "hjk"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "vwx"; commit_parent = (Some "hjk"); commit_p = rand_init_p (); commit_v = zero_vec }
-         ; { commit_sha = "yz"; commit_parent = (Some "vwx"); commit_p = rand_init_p (); commit_v = zero_vec }
+         [ { commit_sha = "abc"; commit_parent = None; commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "def"; commit_parent = (Some "abc"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "ghi"; commit_parent = (Some "def"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "jkl"; commit_parent = (Some "ghi"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "mno"; commit_parent = (Some "jkl"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "pqr"; commit_parent = (Some "mno"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "stu"; commit_parent = (Some "def"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "vwx"; commit_parent = (Some "stu"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "yzz"; commit_parent = (Some "vwx"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "1ab"; commit_parent = (Some "stu"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "1bc"; commit_parent = (Some "1ab"); commit_p = repo_init_p; commit_v = zero_vec }
+         ; { commit_sha = "1de"; commit_parent = (Some "1bc"); commit_p = repo_init_p; commit_v = zero_vec }
          ]
       )
-  ; repo_p = { x = 150.; y = 50. }
-  ; repo_thrust = { x = 0.; y = 100. }
+  ; repo_p = repo_init_p
   }
 
 let initState =
-  { repos = [origin]
+  { repos = [origin_init]
+  ; t = 0.
   }
-
-let setup env : stateT =
-  Env.size ~width:600 ~height:600 env;
-  initState
 
 let target_d = 10.
 let target_d_sq = target_d ** 2.
@@ -94,7 +95,7 @@ let rec gather_parent_ps ?acc:(acc=[]) (repo : repo) (commit : commit) : vec lis
     let c = StringMap.find sha repo.repo_commits in
     gather_parent_ps ~acc:(c.commit_p :: acc) repo c
 
-let step_commit (dt : float) (repo : repo) commit =
+let step_commit (dt : float) (state : stateT) (repo : repo) commit =
   let parent_ps = gather_parent_ps repo commit in
   let sibling_ps = repo.repo_commits |> StringMap.filter (fun _ c ->
       c.commit_parent = commit.commit_parent && c <> commit
@@ -109,7 +110,7 @@ let step_commit (dt : float) (repo : repo) commit =
             let delta = sub_vecs p pp in
             let r_sq = calc_mag_sq delta in
             let r = sqrt r_sq in
-            scale_vec (800. /. r) delta
+            scale_vec (1000. /. r) delta
         in
         add_vecs acc a
     ) zero_vec
@@ -123,7 +124,7 @@ let step_commit (dt : float) (repo : repo) commit =
           let delta = sub_vecs p pp in
           let r_sq = calc_mag_sq delta in
           let r = sqrt r_sq in
-          scale_vec (500. /. r) delta
+          scale_vec (700. /. r) delta
       in
       add_vecs acc a
     ) sibling_ps zero_vec
@@ -145,25 +146,29 @@ let step_commit (dt : float) (repo : repo) commit =
       scale_vec ((target_d -. r) ** 2.) unit_vec
   in
   let a = zero_vec
-          |> add_vecs repo.repo_thrust
+          |> add_vecs (global_forces state.t)
           |> add_vecs parent_repel_a
           |> add_vecs sibling_repel_a
           |> add_vecs attract_a
           |> add_vecs drag_a
   in
   let v =
-    { x = commit.commit_v.x +. a.x *. dt; y = commit.commit_v.y +. a.y *. dt }
+    { x = commit.commit_v.x +. a.x *. dt
+    ; y = commit.commit_v.y +. a.y *. dt
+    }
   in
   let p =
     { x = p.x +. v.x *. dt; y = p.y +. v.y *. dt }
   in
   { commit with commit_p = p; commit_v = v }
 
-let step_repo (dt : float) repo =
-  { repo with repo_commits = StringMap.map (step_commit dt repo) repo.repo_commits }
+let step_repo (dt : float) (state : stateT) repo =
+  { repo with repo_commits = StringMap.map (step_commit dt state repo) repo.repo_commits }
 
 let step_state (dt : float) (state : stateT) =
-  { repos = List.map (step_repo dt) state.repos }
+  { t = state.t +. dt
+  ; repos = List.map (step_repo dt state) state.repos
+  }
 
 let draw_commit_lines env repo commit =
   let p = commit.commit_p in
@@ -175,7 +180,7 @@ let draw_commit env commit =
   Draw.fill (Utils.color ~r:241 ~g:78 ~b:50 ~a:255) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
-  Draw.ellipsef ~center:(commit.commit_p.x, commit.commit_p.y) ~radx:20. ~rady:20. env
+  Draw.ellipsef ~center:(p.x, p.y) ~radx:20. ~rady:20. env
 
 let draw_repo env repo =
   Draw.fill Constants.white env;
@@ -194,4 +199,14 @@ let draw state env =
   List.iter (draw_repo env) state'.repos;
   state'
 
-let _ = run ~setup ~draw ()
+let setup width height env : stateT =
+  Env.size ~width ~height env;
+  initState
+
+external innerWidth : int = "window.document.documentElement.clientWidth" [@@bs.val]
+external innerHeight : int = "window.document.documentElement.clientHeight" [@@bs.val]
+
+let _ =
+  let w, h = innerWidth, innerHeight in
+  Reprocessing.setScreenId "gitsim-screen";
+  run ~setup:(setup w h) ~draw ()
