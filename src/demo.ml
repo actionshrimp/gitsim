@@ -1,5 +1,17 @@
 open Reprocessing
 
+type color =
+  { r : int; g : int; b : int }
+
+let c_orange : color = { r = 245; g = 77; b = 39 }
+let c_light_blue : color = { r = 199; g = 217; b = 229 }
+let c_dark_blue : color = { r = 0; g = 144; b = 154 }
+let c_yellow : color = { r = 205; g = 159; b = 0 }
+
+let c_of ?a:(a=255) (c: color) : colorT =
+  let {r;g;b} = c in
+  (Utils.color ~r ~g ~b ~a)
+
 type vec
   = { x : float; y : float }
 
@@ -36,7 +48,7 @@ let global_forces (t : float) = { x = 100. *. Js.Math.sin (t /. 2.) +. 20. *. Js
 let origin_init : repo =
   let repo_init_p = { x = 150.; y = 550. } in
   { repo_name = "origin"
-  ; repo_refs = [{ gref_name = "master"; gref_sha = "abc" }]
+  ; repo_refs = [{ gref_name = "master"; gref_sha = "1de" }]
   ; repo_commits =
       (List.fold_left (fun m c -> StringMap.add c.commit_sha c m)
          StringMap.empty
@@ -173,14 +185,39 @@ let step_state (dt : float) (state : stateT) =
 let draw_commit_lines env repo commit =
   let p = commit.commit_p in
   let parent_p = one_parent_p repo commit in
-  Draw.linef ~p1:(parent_p.x,parent_p.y) ~p2:(p.x,p.y) env
+  Draw.linef ~p1:(parent_p.x, parent_p.y) ~p2:(p.x,p.y) env
 
-let draw_commit env commit =
+let draw_commit env repo commit =
   let p = commit.commit_p in
-  Draw.fill (Utils.color ~r:241 ~g:78 ~b:50 ~a:255) env;
+  Draw.fill (c_of c_orange) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
-  Draw.ellipsef ~center:(p.x, p.y) ~radx:10. ~rady:10. env
+  Draw.ellipsef ~center:(p.x, p.y) ~radx:10. ~rady:10. env;
+  if List.exists (fun r -> r.gref_sha = commit.commit_sha) repo.repo_refs
+  then begin
+    Draw.strokeWeight 0 env;
+    Draw.rectMode Reprocessing_Common.Corner env;
+    let o_x = 15. in
+    let t_w = 10. in
+    let r_w = 100. in
+    let half_h = 10. in
+    let p_1 = (p.x +. o_x, p.y) in
+    let p_2 = (p.x +. o_x +. t_w, p.y +. half_h) in
+    let p_3 = (p.x +. o_x +. t_w +. r_w, p.y +. half_h) in
+    let p_4 = (p.x +. o_x +. t_w +. r_w, p.y -. half_h) in
+    let p_5 = (p.x +. o_x +. t_w, p.y -. half_h) in
+    Draw.fill (c_of c_dark_blue) env;
+    Draw.rectf ~pos:(p.x +. o_x +. 10., p.y -. 10.) ~width: r_w ~height:(half_h *. 2.) env;
+    Draw.trianglef ~p1:p_1 ~p2:p_2 ~p3:p_5 env;
+    Draw.stroke Constants.black env;
+    Draw.strokeWeight 3 env;
+    Draw.linef ~p1:p_1 ~p2:p_2 env;
+    Draw.linef ~p1:p_2 ~p2:p_3 env;
+    Draw.linef ~p1:p_3 ~p2:p_4 env;
+    Draw.linef ~p1:p_4 ~p2:p_5 env;
+    Draw.linef ~p1:p_5 ~p2:p_1 env;
+  end
+
 
 let draw_repo env repo =
   Draw.fill Constants.white env;
@@ -189,21 +226,14 @@ let draw_repo env repo =
   Draw.rectMode Center env;
   Draw.rectf ~pos:(repo.repo_p.x, repo.repo_p.y) ~width:100. ~height:50. env;
   StringMap.iter (fun _ c -> draw_commit_lines env repo c) repo.repo_commits;
-  StringMap.iter (fun _ c -> draw_commit env c) repo.repo_commits
+  StringMap.iter (fun _ c -> draw_commit env repo c) repo.repo_commits
 
-
-type color =
-  { r : int; g : int; b : int; a : int }
-
-let bgcolor : color =
-  { r = 199; g = 217; b = 229; a = 255 }
 
 let draw state env =
   let dt = Env.deltaTime env in
   let dt_sim = min dt 0.1 in
   let state' = step_state dt_sim state in
-  let {r;g;b;a} = bgcolor in
-  Draw.background (Utils.color ~r ~g ~b ~a) env;
+  Draw.background (c_of c_light_blue) env;
   List.iter (draw_repo env) state'.repos;
   state'
 
