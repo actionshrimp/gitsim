@@ -1,2 +1,5 @@
 ((tuareg-mode . ((eval . (tuareg-opam-update-env (projectile-project-root)))
-                 (utop-command . "jbuilder utop . -- -emacs"))))
+                 (utop-command . "jbuilder utop . -- -emacs")))
+ (nil . ((eval . (projectile-register-project-type 'bucklescript '("bsconfig.json")
+                                                   :compile "npm run build"))
+         (projectile-project-type . bucklescript))))
