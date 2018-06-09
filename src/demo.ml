@@ -217,4 +217,4 @@ external innerHeight : int = "window.document.documentElement.clientHeight" [@@b
 let _ =
   let w, h = innerWidth, innerHeight in
   Reprocessing.setScreenId "gitsim-screen";
-  run ~setup:(setup (w / 2) h) ~draw ()
+  run ~setup:(setup (w * 60 / 100) h) ~draw ()
