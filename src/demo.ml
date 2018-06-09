@@ -191,11 +191,19 @@ let draw_repo env repo =
   StringMap.iter (fun _ c -> draw_commit_lines env repo c) repo.repo_commits;
   StringMap.iter (fun _ c -> draw_commit env c) repo.repo_commits
 
+
+type color =
+  { r : int; g : int; b : int; a : int }
+
+let bgcolor : color =
+  { r = 199; g = 217; b = 229; a = 255 }
+
 let draw state env =
   let dt = Env.deltaTime env in
   let dt_sim = min dt 0.1 in
   let state' = step_state dt_sim state in
-  Draw.background (Utils.color ~r:199 ~g:217 ~b:229 ~a:255) env;
+  let {r;g;b;a} = bgcolor in
+  Draw.background (Utils.color ~r ~g ~b ~a) env;
   List.iter (draw_repo env) state'.repos;
   state'
 
