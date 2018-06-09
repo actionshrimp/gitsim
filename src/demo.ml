@@ -180,7 +180,7 @@ let draw_commit env commit =
   Draw.fill (Utils.color ~r:241 ~g:78 ~b:50 ~a:255) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
-  Draw.ellipsef ~center:(p.x, p.y) ~radx:20. ~rady:20. env
+  Draw.ellipsef ~center:(p.x, p.y) ~radx:10. ~rady:10. env
 
 let draw_repo env repo =
   Draw.fill Constants.white env;
@@ -209,6 +209,7 @@ let draw state env =
 
 let setup width height env : stateT =
   Env.size ~width ~height env;
+  (* Draw.scale ~x:0.5 ~y:0.5 env; *)
   initState
 
 external innerWidth : int = "window.document.documentElement.clientWidth" [@@bs.val]
