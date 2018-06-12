@@ -41,6 +41,24 @@ type stateT =
   ; t : float
   }
 
+type draw_commit
+  = { p : vec }
+
+type draw_commit_line
+  = { p : vec; p_parent : vec }
+
+type draw_branch_ref
+  = { p : vec }
+
+type draw_repo
+  = { p : vec }
+
+type draw_cmd
+  = Draw_commit of draw_commit
+  | Draw_commit_line of draw_commit_line
+  | Draw_branch_ref of draw_branch_ref
+  | Draw_repo of draw_repo
+
 let zero_vec = { x = 0.; y = 0. }
 
 let global_forces (t : float) = { x = 100. *. Js.Math.sin (t /. 2.) +. 20. *. Js.Math.cos (t /. 3.); y = -. 1000. }
@@ -182,59 +200,84 @@ let step_state (dt : float) (state : stateT) =
   ; repos = List.map (step_repo dt state) state.repos
   }
 
-let draw_commit_lines env repo commit =
-  let p = commit.commit_p in
-  let parent_p = one_parent_p repo commit in
-  Draw.linef ~p1:(parent_p.x, parent_p.y) ~p2:(p.x,p.y) env
+let draw_commit_line env (d : draw_commit_line) =
+  Draw.linef ~p1:(d.p_parent.x, d.p_parent.y) ~p2:(d.p.x, d.p.y) env
 
-let draw_commit env repo commit =
-  let p = commit.commit_p in
+let draw_branch_ref env (d : draw_branch_ref) =
+  let p = d.p in
+  Draw.strokeWeight 0 env;
+  Draw.rectMode Reprocessing_Common.Corner env;
+  let o_x = 15. in
+  let t_w = 10. in
+  let r_w = 100. in
+  let half_h = 10. in
+  let p_1 = (p.x +. o_x, p.y) in
+  let p_2 = (p.x +. o_x +. t_w, p.y +. half_h) in
+  let p_3 = (p.x +. o_x +. t_w +. r_w, p.y +. half_h) in
+  let p_4 = (p.x +. o_x +. t_w +. r_w, p.y -. half_h) in
+  let p_5 = (p.x +. o_x +. t_w, p.y -. half_h) in
+  Draw.fill (c_of ~a:128 c_dark_blue) env;
+  Draw.rectf ~pos:(p.x +. o_x +. 10., p.y -. 10.) ~width: r_w ~height:(half_h *. 2.) env;
+  Draw.trianglef ~p1:p_1 ~p2:p_2 ~p3:p_5 env;
+  Draw.stroke Constants.black env;
+  Draw.strokeWeight 3 env;
+  Draw.linef ~p1:p_1 ~p2:p_2 env;
+  Draw.linef ~p1:p_2 ~p2:p_3 env;
+  Draw.linef ~p1:p_3 ~p2:p_4 env;
+  Draw.linef ~p1:p_4 ~p2:p_5 env;
+  Draw.linef ~p1:p_5 ~p2:p_1 env
+
+let draw_commit env (d : draw_commit) =
   Draw.fill (c_of c_orange) env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
-  Draw.ellipsef ~center:(p.x, p.y) ~radx:10. ~rady:10. env;
-  if List.exists (fun r -> r.gref_sha = commit.commit_sha) repo.repo_refs
-  then begin
-    Draw.strokeWeight 0 env;
-    Draw.rectMode Reprocessing_Common.Corner env;
-    let o_x = 15. in
-    let t_w = 10. in
-    let r_w = 100. in
-    let half_h = 10. in
-    let p_1 = (p.x +. o_x, p.y) in
-    let p_2 = (p.x +. o_x +. t_w, p.y +. half_h) in
-    let p_3 = (p.x +. o_x +. t_w +. r_w, p.y +. half_h) in
-    let p_4 = (p.x +. o_x +. t_w +. r_w, p.y -. half_h) in
-    let p_5 = (p.x +. o_x +. t_w, p.y -. half_h) in
-    Draw.fill (c_of c_dark_blue) env;
-    Draw.rectf ~pos:(p.x +. o_x +. 10., p.y -. 10.) ~width: r_w ~height:(half_h *. 2.) env;
-    Draw.trianglef ~p1:p_1 ~p2:p_2 ~p3:p_5 env;
-    Draw.stroke Constants.black env;
-    Draw.strokeWeight 3 env;
-    Draw.linef ~p1:p_1 ~p2:p_2 env;
-    Draw.linef ~p1:p_2 ~p2:p_3 env;
-    Draw.linef ~p1:p_3 ~p2:p_4 env;
-    Draw.linef ~p1:p_4 ~p2:p_5 env;
-    Draw.linef ~p1:p_5 ~p2:p_1 env;
-  end
+  Draw.ellipsef ~center:(d.p.x, d.p.y) ~radx:10. ~rady:10. env
 
-
-let draw_repo env repo =
+let draw_repo env (d : draw_repo) =
   Draw.fill Constants.white env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
   Draw.rectMode Center env;
-  Draw.rectf ~pos:(repo.repo_p.x, repo.repo_p.y) ~width:100. ~height:50. env;
-  StringMap.iter (fun _ c -> draw_commit_lines env repo c) repo.repo_commits;
-  StringMap.iter (fun _ c -> draw_commit env repo c) repo.repo_commits
+  Draw.rectf ~pos:(d.p.x, d.p.y) ~width:100. ~height:50. env
 
+let build_branch_ref_draws c =
+  [ Draw_branch_ref { p = c.commit_p } ]
+
+let build_commit_line_draws repo c =
+  let p = c.commit_p in
+  let p_parent = one_parent_p repo c in
+  [ Draw_commit_line { p = p; p_parent = p_parent }]
+
+let build_commit_draws repo c =
+  List.concat
+  [ [ Draw_commit { p = c.commit_p }]
+  ; (if List.exists (fun r -> r.gref_sha = c.commit_sha) repo.repo_refs
+     then build_branch_ref_draws c
+     else [])
+  ]
+
+let build_repo_draws repo =
+  let cs = StringMap.bindings repo.repo_commits in
+  List.concat
+    [ [ Draw_repo { p = repo.repo_p } ]
+    ; (Util.List.flat_map (fun (_, c) -> build_commit_line_draws repo c) cs)
+    ; (Util.List.flat_map (fun (_, c) -> build_commit_draws repo c) cs)
+    ]
+
+
+let draw_draws env ds =
+  List.iter (function | Draw_repo d -> draw_repo env d | _ -> ()) ds;
+  List.iter (function | Draw_commit_line d -> draw_commit_line env d | _ -> ()) ds;
+  List.iter (function | Draw_commit d -> draw_commit env d | _ -> ()) ds;
+  List.iter (function | Draw_branch_ref d -> draw_branch_ref env d | _ -> ()) ds
 
 let draw state env =
   let dt = Env.deltaTime env in
   let dt_sim = min dt 0.1 in
   let state' = step_state dt_sim state in
+  let draws = List.map build_repo_draws state'.repos |> List.concat in
   Draw.background (c_of c_light_blue) env;
-  List.iter (draw_repo env) state'.repos;
+  draw_draws env draws;
   state'
 
 let setup width height env : stateT =
