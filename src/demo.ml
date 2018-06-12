@@ -210,14 +210,14 @@ let draw_branch_ref env (d : draw_branch_ref) =
   let o_x = 15. in
   let t_w = 10. in
   let r_w = 100. in
-  let half_h = 10. in
+  let half_h = 16. in
   let p_1 = (p.x +. o_x, p.y) in
   let p_2 = (p.x +. o_x +. t_w, p.y +. half_h) in
   let p_3 = (p.x +. o_x +. t_w +. r_w, p.y +. half_h) in
   let p_4 = (p.x +. o_x +. t_w +. r_w, p.y -. half_h) in
   let p_5 = (p.x +. o_x +. t_w, p.y -. half_h) in
   Draw.fill (c_of ~a:128 c_dark_blue) env;
-  Draw.rectf ~pos:(p.x +. o_x +. 10., p.y -. 10.) ~width: r_w ~height:(half_h *. 2.) env;
+  Draw.rectf ~pos:(p.x +. o_x +. 10., p.y -. half_h) ~width: r_w ~height:(half_h *. 2.) env;
   Draw.trianglef ~p1:p_1 ~p2:p_2 ~p3:p_5 env;
   Draw.stroke Constants.black env;
   Draw.strokeWeight 3 env;
